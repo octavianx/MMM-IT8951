@@ -20,7 +20,6 @@ module.exports = NodeHelper.create({
 	 * URL of MagicMirror server
 	 */
 	url: (config.useHttps ? "https://" : "http://") + config.address + ":" + config.port + config.basePath,
-
 	/**
 	 * Indicates if driver was initialized
 	 */
@@ -60,6 +59,7 @@ module.exports = NodeHelper.create({
 			}
 			// Use OS browser instead of built-in puppeteer (remove executablePath to use it)
 			this.browser = await Puppeteer.launch({ executablePath: "/usr/bin/chromium-browser", args: puppeteerArgs });
+			//this.browser = await Puppeteer.launch({ headless: 'new',  executablePath: "/usr/bin/chromium-browser", args: puppeteerArgs });
 			this.page = await this.browser.newPage();
 			const url = this.url;
 			await this.page.goto(url, { waitUntil: "load" });
@@ -229,7 +229,7 @@ module.exports = NodeHelper.create({
 		// Cancels partial refresh
 		this.stackAreas.length = 0;
 
-		Log.log("Full refresh eink");
+		Log.log("Full refresh eink:<---------------------------------");
 		const imageDesc = await this.captureScreen();
 
 		const nbModules = await this.getNbVisibleModules();
@@ -238,6 +238,7 @@ module.exports = NodeHelper.create({
 		await this.IT8951_draw(imageDesc, is4levels);
 		this.IT8951_sleep();
 
+		Log.log("Full refresh eink:- END-------------------------------->");
 		// Schedules next update
 		this.refreshTimeout = setTimeout(function (self) {
 			self.fullRefresh(false);
@@ -283,9 +284,19 @@ module.exports = NodeHelper.create({
 			}
 			// A fast non-flashy update mode that can go from any gray scale color to black or white
 			const DISPLAY_UPDATE_MODE_DU = 1;
-			const DISPLAY_UPDATE_MODE_DU4 = 7;
-			const display_mode = is4levels ? DISPLAY_UPDATE_MODE_DU4 : false;
+			const DISPLAY_UPDATE_MODE_DU4 = 7;  // rare little ghosting
+			const DISPLAY_UPDATE_MODE_GLR16 = 4; //  ghosting heavy
+			const DISPLAY_UPDATE_MODE_GL16 = 3; // little ghosting 
+			const DISPLAY_UPDATE_MODE_GC16 = 2; //  flashy
+			const DISPLAY_UPDATE_MODE_GLD16 = 5; //  flashy
+			const DISPLAY_UPDATE_MODE_A2 = 6; //  flashy
 
+
+			//const display_mode = is4levels ? DISPLAY_UPDATE_MODE_DU4 : false;
+			// if using 6inch, useing 5 for partial refresh,
+			const display_mode = is4levels ? 5 : false;
+
+			console.log("drawing dispalymode:", display_mode) ;
 			// Draw area
 			this.display.draw(this.downscale8bitsTo4bits(data, is4levels),
 				imageDesc.rect.x, imageDesc.rect.y,
@@ -308,6 +319,7 @@ module.exports = NodeHelper.create({
 	 */
 	IT8951_activate: function () {
 		if (!this.config.mock && this.IT8951_sysrun !== true) {
+			this.display.wait_for_ready();
 			this.display.activate();
 			this.display.wait_for_ready();
 		}
