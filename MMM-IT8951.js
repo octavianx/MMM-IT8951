@@ -20,10 +20,9 @@ Module.register("MMM-IT8951", {
 		updateInterval: 60 * 1000,	// Full refresh screen interval - default to 1 minute
 		bufferDelay: 1000,			// Delay before accounting updated items that have not an instant refresh rate on screen - default to 1 second
 		defaultTo4levels: false,
-
 		/* Driver configuration */
 		mock: false,	// Use a true IT8951 card or mock interface
-		driverParam: { MAX_BUFFER_SIZE: 4096, ALIGN4BYTES: true, VCOM: 1480 }, // see https://github.com/gaweee/node-it8951#functions-calls
+		driverParam: { MAX_BUFFER_SIZE: 32768, ALIGN4BYTES: true, VCOM: 1530 }, // see https://github.com/gaweee/node-it8951#functions-calls
 	},
 
 	/**
@@ -36,8 +35,10 @@ Module.register("MMM-IT8951", {
 	notificationReceived: function (notification, payload, sender) {
 		if (notification === "DOM_OBJECTS_CREATED") {
 			// Initializes node helper
+			console.log("doing dom obj creating");
 			this.sendSocketNotification("CONFIG", this.config);
 		} else if (notification === "IT8951_ASK_FULL_REFRESH") {
+			console.log("IT8951 ask full refresh")
 			// Full refresh of screen (payload is a boolean to have update screen with the 16-levels)
 			this.sendSocketNotification(notification, payload);
 		}
