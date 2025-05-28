@@ -1,5 +1,5 @@
 {
-	"name": "mmm-it8951",
+	"name": "mmm-it8951",	
 	"version": "1.0.0",
 	"description": "This MagicMirror² module communicates with a IT8951 card to display MagicMirror² on a e-ink screen using IT8951 drivers.",
 	"main": "MMM-IT8951.js",
@@ -17,6 +17,7 @@
 		"waveshare-eink"
 	],
 	"dependencies": {
+		"node-it8951": "github:octavianx/node-it8951-epaper",
 		"node-it8951": "^0.0.1",
 		"puppeteer": "^22.15.0",
 		"sharp": "^0.33.4"

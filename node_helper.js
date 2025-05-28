@@ -14,6 +14,16 @@ const Puppeteer = require("puppeteer");
 const IT8951 = require("node-it8951");
 const Sharp = require("sharp");
 
+// A fast non-flashy update mode that can go from any gray scale color to black or white
+const DISPLAY_UPDATE_MODE_DU = 1;
+const DISPLAY_UPDATE_MODE_DU4 = 7;  // rare little ghosting
+const DISPLAY_UPDATE_MODE_GLR16 = 4; //  ghosting heavy
+const DISPLAY_UPDATE_MODE_GL16 = 3; // little ghosting 
+const DISPLAY_UPDATE_MODE_GC16 = 2; //  flashy
+const DISPLAY_UPDATE_MODE_GLD16 = 5; //  flashy
+const DISPLAY_UPDATE_MODE_A2 = 6; //  flashy
+
+
 module.exports = NodeHelper.create({
 
 	/**
@@ -283,20 +293,14 @@ module.exports = NodeHelper.create({
 				is4levels = this.isBufferOnlyGray4Levels(data);
 			}
 			// A fast non-flashy update mode that can go from any gray scale color to black or white
-			const DISPLAY_UPDATE_MODE_DU = 1;
-			const DISPLAY_UPDATE_MODE_DU4 = 7;  // rare little ghosting
-			const DISPLAY_UPDATE_MODE_GLR16 = 4; //  ghosting heavy
-			const DISPLAY_UPDATE_MODE_GL16 = 3; // little ghosting 
-			const DISPLAY_UPDATE_MODE_GC16 = 2; //  flashy
-			const DISPLAY_UPDATE_MODE_GLD16 = 5; //  flashy
-			const DISPLAY_UPDATE_MODE_A2 = 6; //  flashy
 
+			const driverParam = this.config.driverParam || {};
 
-			//const display_mode = is4levels ? DISPLAY_UPDATE_MODE_DU4 : false;
-			// if using 6inch, useing 5 for partial refresh,
-			const display_mode = is4levels ? 5 : false;
+			const display_mode = driverParam.force6inch === true
+		    	? (is4levels ? 5 : false)
+    			: (is4levels ? DISPLAY_UPDATE_MODE_DU4 : false);
 
-			console.log("drawing dispalymode:", display_mode) ;
+			console.log("drawing displaymode:", display_mode);
 			// Draw area
 			this.display.draw(this.downscale8bitsTo4bits(data, is4levels),
 				imageDesc.rect.x, imageDesc.rect.y,

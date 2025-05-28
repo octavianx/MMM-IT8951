@@ -22,7 +22,7 @@ Module.register("MMM-IT8951", {
 		defaultTo4levels: false,
 		/* Driver configuration */
 		mock: false,	// Use a true IT8951 card or mock interface
-		driverParam: { MAX_BUFFER_SIZE: 32768, ALIGN4BYTES: true, VCOM: 1530 }, // see https://github.com/gaweee/node-it8951#functions-calls
+		driverParam: { MAX_BUFFER_SIZE: 32768, ALIGN4BYTES: true, VCOM: 1530, force6inch: false}, // see https://github.com/gaweee/node-it8951#functions-calls
 	},
 
 	/**
