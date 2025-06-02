@@ -18,7 +18,6 @@
 	],
 	"dependencies": {
 		"node-it8951": "github:octavianx/node-it8951-epaper",
-		"node-it8951": "^0.0.1",
 		"puppeteer": "^22.15.0",
 		"sharp": "^0.33.4"
 	},
