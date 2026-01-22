@@ -239,7 +239,7 @@ module.exports = NodeHelper.create({
 		// Cancels partial refresh
 		this.stackAreas.length = 0;
 
-		Log.log("Full refresh eink:<---------------------------------");
+		Log.debug("IT8951: Full refresh started");
 		const imageDesc = await this.captureScreen();
 
 		const nbModules = await this.getNbVisibleModules();
@@ -248,7 +248,7 @@ module.exports = NodeHelper.create({
 		await this.IT8951_draw(imageDesc, is4levels);
 		this.IT8951_sleep();
 
-		Log.log("Full refresh eink:- END-------------------------------->");
+		Log.debug("IT8951: Full refresh completed");
 		// Schedules next update
 		this.refreshTimeout = setTimeout(function (self) {
 			self.fullRefresh(false);
@@ -300,7 +300,7 @@ module.exports = NodeHelper.create({
 		    	? (is4levels ? 5 : false)
     			: (is4levels ? DISPLAY_UPDATE_MODE_DU4 : false);
 
-			console.log("drawing displaymode:", display_mode);
+			Log.debug(`IT8951: Drawing with mode ${display_mode} (is4levels: ${is4levels})`);
 			// Draw area
 			this.display.draw(this.downscale8bitsTo4bits(data, is4levels),
 				imageDesc.rect.x, imageDesc.rect.y,

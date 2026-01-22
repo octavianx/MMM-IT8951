@@ -51,10 +51,10 @@ Module.register("MMM-IT8951", {
 	notificationReceived: function (notification, payload, sender) {
 		if (notification === "DOM_OBJECTS_CREATED") {
 			// Initializes node helper
-			console.log("doing dom obj creating");
+			Log.debug("MMM-IT8951: DOM objects created, sending config");
 			this.sendSocketNotification("CONFIG", this.config);
 		} else if (notification === "IT8951_ASK_FULL_REFRESH") {
-			console.log("IT8951 ask full refresh")
+			Log.debug("MMM-IT8951: Full refresh requested");
 			// Full refresh of screen (payload is a boolean to have update screen with the 16-levels)
 			this.sendSocketNotification(notification, payload);
 		}
