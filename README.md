@@ -11,6 +11,14 @@ Another way to have a fast refresh without flash is by adding the CSS class `ein
 
 The IT8951 is typically used by some Waveshare e-paper screens.
 
+## Supported Displays
+
+| Display | Resolution | VCOM | Notes |
+|---------|------------|------|-------|
+| Waveshare 7.8" | 1872x1404 | 1380 | Check FPC cable for exact VCOM |
+| Waveshare 6" HD | 1448x1072 | ~1530 | Use `force6inch: true` if needed |
+| Kindle Paperwhite 6" | 1448x1072 | 1530 | Requires `force6inch: true` |
+
 ## Using the module
 
 To use this module, add the following configuration block to the modules array in the `config/config.js` file:
@@ -24,7 +32,12 @@ var config = {
 				updateInterval: 60 * 1000, // 1 minute // Full refresh screen
 				bufferDelay: 1000, // 1 second // Delay before taking updated items
 				defaultTo4levels: false,
-				driverParam: { MAX_BUFFER_SIZE: 4096, VCOM: 1480 }, // see https://github.com/gaweee/node-it8951#functions-calls
+				driverParam: {
+					MAX_BUFFER_SIZE: 32768,
+					ALIGN4BYTES: true,
+					VCOM: 1380,        // Check your screen's FPC cable for correct value
+					force6inch: false  // Set to true for 6" displays
+				},
 				mock: false,
 			},
 		},
@@ -38,6 +51,24 @@ var config = {
 		},
 	]
 }
+```
+
+### Example: 6" Kindle Paperwhite Display
+
+```js
+{
+	module: "MMM-IT8951",
+	config: {
+		updateInterval: 60 * 1000,
+		bufferDelay: 1000,
+		driverParam: {
+			MAX_BUFFER_SIZE: 32768,
+			ALIGN4BYTES: true,
+			VCOM: 1530,       // Kindle Paperwhite voltage
+			force6inch: true  // Required for 6" displays
+		},
+	},
+},
 ```
 
 To use a specific color within the 4 levels of gray, these colors are defined in CSS and can be used:
@@ -58,7 +89,7 @@ When a refresh is done on an area that contains only these 4 colors, the refresh
 
 ```sh
 cd ~/MagicMirror/modules # Change path to modules directory of your actual MagiMirror² installation
-git clone https://github.com/seb-ma/MMM-IT8951
+git clone https://github.com/octavianx/MMM-IT8951
 cd MMM-IT8951
 ```
 
@@ -80,14 +111,7 @@ To be able to communicate with IT8951 card, SPI must be activated and permission
 
 **On Raspberry OS:**
 
-⚠️ Currently, this module only works with the `root` user; thus it needs MagicMirror to be launched by `root` user.
-
-This is due to a problem accessing `/dev/mem`.
-It currently can't be accessed thru npm call at this stage, neither as `sudo npm` nor with sticky bit or `cap_sys_rawio` capability set.
-
-It works only with user `root` (`sudo su`).
-
-*For future reference, here, what should work:*
+This module requires `root` user to access `/dev/mem` for SPI communication.
 
 ```sh
 sudo raspi-config
@@ -97,23 +121,42 @@ Then, enable SPI:
 - Interfacing options
 - P4 SPI Enable / Disable automatic loading of SPI core module
 
-And add your user in `spi` group:
+Run MagicMirror as root:
 
 ```sh
-sudo adduser $USER spi
-sudo adduser $USER kmem
-
+sudo npm run start
+# or with pm2
+sudo pm2 start mm
 ```
 
 ## Configuration options
 
-| Option			| Description
-|------------------ |-------------
-| `updateInterval`	| *Optional* Full refresh screen interval<br><br>**Type:** `int` (milliseconds)<br>Default: 60000 (1 minute)
-| `bufferDelay`		| *Optional* Delay before taking updated items in DOM to refresh parts of screen (only applyied to no 4-levels parts. 4-levels parts are always instantly refreshed)<br><br>**Type:** `int` (milliseconds)<br>Default: 1000 (1 second)<br>Set `undefined` to ignore partial refresh, 0 to refresh immediately
-| `defaultTo4levels`| *Optional* If `true`,  it consider all modules are on 4-levels gray unless modules having class "no-eink-4levels"<br>If `false`,  it consider all modules are on 16-levels gray unless modules having class "eink-4levels"<br><br>**Type:** `boolean`<br>Default: `false`
-| `driverParam`		| *Optional* Parameter to initialize IT8951 driver. See https://github.com/gaweee/node-it8951#functions-calls<br>Default: `{MAX_BUFFER_SIZE: 4096, ALIGN4BYTES: true, VCOM: 1480}`
-| `mock`			| *Optional* `true` to retrieve not initialize IT8951 driver and store png files of changed areas in `/tmp` instead<br><br>**Type:** `boolean`<br>Default: `false`
+| Option | Description |
+|--------|-------------|
+| `updateInterval` | *Optional* Full refresh screen interval<br><br>**Type:** `int` (milliseconds)<br>Default: 60000 (1 minute) |
+| `bufferDelay` | *Optional* Delay before taking updated items in DOM to refresh parts of screen (only applied to no 4-levels parts. 4-levels parts are always instantly refreshed)<br><br>**Type:** `int` (milliseconds)<br>Default: 1000 (1 second)<br>Set `undefined` to ignore partial refresh, 0 to refresh immediately |
+| `defaultTo4levels` | *Optional* If `true`, it considers all modules are on 4-levels gray unless modules having class "no-eink-4levels"<br>If `false`, it considers all modules are on 16-levels gray unless modules having class "eink-4levels"<br><br>**Type:** `boolean`<br>Default: `false` |
+| `driverParam` | *Optional* Parameter to initialize IT8951 driver (see below)<br>Default: `{MAX_BUFFER_SIZE: 32768, ALIGN4BYTES: true, VCOM: 1530}` |
+| `mock` | *Optional* `true` to not initialize IT8951 driver and store png files of changed areas in `/tmp` instead<br><br>**Type:** `boolean`<br>Default: `false` |
+
+### driverParam Options
+
+| Option | Description |
+|--------|-------------|
+| `MAX_BUFFER_SIZE` | SPI transfer buffer size. Recommended: 32768 |
+| `ALIGN4BYTES` | Force X and Width to be multiples of 32. Required for some displays |
+| `VCOM` | Display VCOM voltage. **Check the label on your screen's FPC cable**<br>Common values: 1380 (7.8"), 1530 (6" Kindle) |
+| `force6inch` | Set to `true` for 6" displays. Uses different refresh mode (GLD16 instead of DU4) |
+
+## Display Modes
+
+The driver automatically selects the appropriate display mode:
+
+| Mode | Value | When Used |
+|------|-------|-----------|
+| DU4 | 7 | 4-level gray content (fast, no flash) |
+| GLD16 | 5 | 4-level gray on 6" displays (`force6inch: true`) |
+| GC16 | 2 | 16-level grayscale (flashy, full gray range) |
 
 ## Notifications
 
@@ -125,13 +168,23 @@ Examples to send it from another module:
 ```js
 // Refresh with 16-levels
 this.sendNotification("IT8951_ASK_FULL_REFRESH");
-// […]
+// [...]
 
 // Refresh with 16-levels
 this.sendNotification("IT8951_ASK_FULL_REFRESH", true);
-// […]
+// [...]
 
 // Refresh with 4-levels
 this.sendNotification("IT8951_ASK_FULL_REFRESH", false);
-// […]
+// [...]
 ```
+
+## Dependencies
+
+- [node-it8951](https://github.com/octavianx/node-it8951-epaper) - IT8951 SPI/GPIO driver
+- [puppeteer](https://pptr.dev/) - Headless Chrome for screenshot capture
+- [sharp](https://sharp.pixelplumbing.com/) - Image processing (grayscale conversion)
+
+## License
+
+MIT - Based on original work by Sébastien Mazzon
