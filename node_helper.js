@@ -14,6 +14,16 @@ const Puppeteer = require("puppeteer");
 const IT8951 = require("node-it8951");
 const Sharp = require("sharp");
 
+// E-ink display update modes (IT8951)
+// See: https://www.waveshare.net/w/upload/c/c4/E-paper-mode-declaration.pdf
+const DISPLAY_UPDATE_MODE_DU = 1;     // Fast, black/white only, no flash
+const DISPLAY_UPDATE_MODE_GC16 = 2;   // High quality, 16 grays, flashy
+const DISPLAY_UPDATE_MODE_GL16 = 3;   // 16 grays, little ghosting
+const DISPLAY_UPDATE_MODE_GLR16 = 4;  // 16 grays, heavy ghosting
+const DISPLAY_UPDATE_MODE_GLD16 = 5;  // 16 grays, for 6" displays
+const DISPLAY_UPDATE_MODE_A2 = 6;     // Fast animation, 2 grays, flashy
+const DISPLAY_UPDATE_MODE_DU4 = 7;    // Fast, 4 grays, rare ghosting
+
 module.exports = NodeHelper.create({
 	url: (config.useHttps ? "https://" : "http://") + config.address + ":" + config.port + config.basePath,
 	isInitialized: false,
@@ -25,7 +35,7 @@ module.exports = NodeHelper.create({
 		const isCurrentUserRoot = process.getuid() == 0;
 		Log.log(`Starting node helper for: ${this.name}`);
 		(async () => {
-			let puppeteerArgs = ["--disable-gpu"];
+			let puppeteerArgs = ["--disable-gpu", "--single-process"];
 			if (isCurrentUserRoot) {
 				puppeteerArgs.push("--no-sandbox");
 			}
@@ -185,11 +195,7 @@ module.exports = NodeHelper.create({
 			if (is4levels !== true) {
 				is4levels = this.isBufferOnlyGray4Levels(data);
 			}
-			// Display update modes
-			const DISPLAY_UPDATE_MODE_DU4 = 7;   // Fast update, 4 gray levels, rare ghosting
-			const DISPLAY_UPDATE_MODE_GLD16 = 5; // For 6" displays
-
-			// force6inch: Use mode 5 (GLD16) for 6" Kindle screens, mode 7 (DU4) for others
+			// force6inch: Use GLD16 for 6" Kindle screens, DU4 for 7.8" Waveshare
 			const driverParam = this.config.driverParam || {};
 			const display_mode = driverParam.force6inch === true
 				? (is4levels ? DISPLAY_UPDATE_MODE_GLD16 : false)
