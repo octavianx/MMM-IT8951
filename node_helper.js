@@ -35,7 +35,7 @@ module.exports = NodeHelper.create({
 		const isCurrentUserRoot = process.getuid() == 0;
 		Log.log(`Starting node helper for: ${this.name}`);
 		(async () => {
-			let puppeteerArgs = ["--disable-gpu", "--single-process"];
+			let puppeteerArgs = ["--disable-gpu", "--single-process", "--disable-dev-shm-usage"];
 			if (isCurrentUserRoot) {
 				puppeteerArgs.push("--no-sandbox");
 			}
