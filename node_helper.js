@@ -14,75 +14,38 @@ const Puppeteer = require("puppeteer");
 const IT8951 = require("node-it8951");
 const Sharp = require("sharp");
 
-// A fast non-flashy update mode that can go from any gray scale color to black or white
-const DISPLAY_UPDATE_MODE_DU = 1;
-const DISPLAY_UPDATE_MODE_DU4 = 7;  // rare little ghosting
-const DISPLAY_UPDATE_MODE_GLR16 = 4; //  ghosting heavy
-const DISPLAY_UPDATE_MODE_GL16 = 3; // little ghosting 
-const DISPLAY_UPDATE_MODE_GC16 = 2; //  flashy
-const DISPLAY_UPDATE_MODE_GLD16 = 5; //  flashy
-const DISPLAY_UPDATE_MODE_A2 = 6; //  flashy
-
-
 module.exports = NodeHelper.create({
-
-	/**
-	 * URL of MagicMirror server
-	 */
 	url: (config.useHttps ? "https://" : "http://") + config.address + ":" + config.port + config.basePath,
-	/**
-	 * Indicates if driver was initialized
-	 */
 	isInitialized: false,
-
-	/**
-	 * Module config
-	 * see `MMM-IT8951.default`
-	 */
 	config: {},
-
-	/**
-	 * Areas of screen to refresh
-	 */
 	stackAreas: [],
-
-	/**
-	 * IT8951 in run mode? (else sleep mode)
-	 */
 	IT8951_sysrun: undefined,
 
-	/**
-	 * Starts the node helper of the module
-	 * @see `node_helper.start`
-	 * @see <https://docs.magicmirror.builders/development/node-helper.html#start>
-	 */
 	start: function () {
-		// Returns true if user running process is `root
-		const isCurrentUserRoot = process.getuid() == 0; // UID 0 is always root
-
+		const isCurrentUserRoot = process.getuid() == 0;
 		Log.log(`Starting node helper for: ${this.name}`);
-		// Starts Puppeteer with IT8951 resolution
 		(async () => {
-			let puppeteerArgs = ["--disable-gpu"]; // Hack: sometimes puppeteer does not start if gpu is enabled
+			let puppeteerArgs = ["--disable-gpu"];
 			if (isCurrentUserRoot) {
 				puppeteerArgs.push("--no-sandbox");
 			}
-			// Use OS browser instead of built-in puppeteer (remove executablePath to use it)
 			this.browser = await Puppeteer.launch({ executablePath: "/usr/bin/chromium-browser", args: puppeteerArgs });
-			//this.browser = await Puppeteer.launch({ headless: 'new',  executablePath: "/usr/bin/chromium-browser", args: puppeteerArgs });
 			this.page = await this.browser.newPage();
+			// Capture console output from the page for debugging
+			this.page.on('console', msg => Log.debug(`[Puppeteer Console] ${msg.type()}: ${msg.text()}`));
+			this.page.on('pageerror', err => Log.error(`[Puppeteer Error] ${err.message}`));
 			const url = this.url;
+			// Wait for Chromium to stabilize before navigating (Pi Zero 2W memory constraint)
+			await new Promise(r => setTimeout(r, 5000));
 			await this.page.goto(url, { waitUntil: "load" });
-
 			Log.log(`Puppeteer launched on ${url}`);
+			// Wait for MagicMirror modules to fully initialize
+			await this.page.waitForFunction(() => typeof MM !== 'undefined' && MM.getModules().length > 0, { timeout: 60000 });
+			Log.log(`MagicMirror modules loaded: ${await this.page.evaluate(() => MM.getModules().length)}`);
 		})();
 	},
 
-	/**
-	 * Initializes IT8951 driver and adds observer on Puppeteer
-	 */
 	initializeEink: async function () {
-		// Starts IT8951
 		this.display = new IT8951(this.config.driverParam);
 		if (!this.config.mock) {
 			this.display.init();
@@ -94,34 +57,21 @@ module.exports = NodeHelper.create({
 				height: config.electronOptions.height ? config.electronOptions.height : 1404,
 			}
 		}
-
-		// Adjusts Puppeteer viewport
 		await this.page.setViewport({ width: this.display.width, height: this.display.height, deviceScaleFactor: 1 });
-
-		// Initialization is finished
 		this.isInitialized = true;
-
-		// Refreshes screen and registers DOM observer on Puppeteer browser
 		await this.fullRefresh(true);
 		if (typeof (this.config.bufferDelay) === "number") {
 			await this.initObservers();
 		}
 	},
 
-	/**
-	 * [Browser function] Called by exposed function on Puppeteer browser
-	 * Process DOM mutations.
-	 * Waits the buffer delay before processing in order to process only 1 time each area that have multiple fast mutations
-	 */
 	processStack: async function () {
-		// Waits before processing stack
 		await new Promise(r => setTimeout(r, this.config.bufferDelay));
 		let rectDone = [];
 		this.IT8951_activate();
 		while (this.stackAreas.length > 0) {
 			const rect = this.stackAreas.shift();
 			const rectStr = JSON.stringify(rect);
-			// If this area was not processed in this row
 			if (!rectDone.includes(rectStr)) {
 				rectDone.push(rectStr);
 				Log.debug("Display IT8951:", rectStr);
@@ -132,18 +82,10 @@ module.exports = NodeHelper.create({
 		this.IT8951_sleep();
 	},
 
-	/**
-	 * [Browser function] Exposes function on Puppeteer browser
-	 * Initializes a DOM mutation observer that retrieves modified areas in DOM
-	 * And call exposed function that update the screen
-	 */
 	initObservers: async function () {
-		/* puppeteerMutation */
 		await this.page.exposeFunction("puppeteerMutation", (rect, hasClass4levels, hasClassNo4levels) => {
-			// No full refresh running
 			if (this.refreshTimeout) {
 				if (hasClass4levels || this.config.defaultTo4levels && !hasClassNo4levels) {
-					// Display immediately
 					(async () => {
 						const imageDesc = await this.captureScreen(rect);
 						this.IT8951_activate();
@@ -151,9 +93,7 @@ module.exports = NodeHelper.create({
 						this.IT8951_sleep();
 					})();
 				} else {
-					// Adds the area to process
 					this.stackAreas.push(rect);
-					// If this is not currently processing
 					if (this.stackAreas.length == 1) {
 						this.processStack();
 					}
@@ -161,20 +101,16 @@ module.exports = NodeHelper.create({
 			}
 		});
 
-		/* Add MutationObserver on Puppeteer browser */
 		await this.page.evaluate(() => {
-			// Callback on mutations
 			const observer = new MutationObserver((mutations, observer) => {
 				const ceil32 = (x) => Math.ceil(x / 32) * 32;
 				const floor32 = (x) => Math.floor(x / 32) * 32;
-
 				var rect = { left: Number.MAX_SAFE_INTEGER, top: Number.MAX_SAFE_INTEGER, right: 0, bottom: 0 };
 				for (const mutation of mutations) {
 					rectMut = mutation.target.getBoundingClientRect();
 					is4levels = (mutation.target.closest(".eink-4levels") !== null);
 					isNo4levels = (mutation.target.closest(".no-eink-4levels") !== null);
 					if (rectMut.width !== 0 && rectMut.height !== 0) {
-						// Extends area to nearest pixels (with modulo 32 for left/right - hack needed because of some glitches at display)
 						rect = {
 							left: floor32(Math.min(rect.left, rectMut.left)),
 							top: Math.floor(Math.min(rect.top, rectMut.top)),
@@ -185,29 +121,19 @@ module.exports = NodeHelper.create({
 				}
 				if (rect.left < rect.right && rect.top < rect.bottom) {
 					const domRect = new DOMRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
-					// Call exposed function
 					puppeteerMutation(domRect, is4levels, isNo4levels);
 				}
 			});
 
-			// Observes mutations in target
 			const target = document.querySelector("body");
 			observer.observe(target, { childList: true, subtree: true });
 		});
 	},
 
-	/**
-	 * Called when the MagicMirror² server receives a `SIGINT`
-	 * Closes Puppeteer browser, clears screen and closes driver
-	 * @see `node_helper.stop`
-	 */
 	stop: function () {
-		// Stops Puppeteer
 		(async () => {
 			await this.browser.close();
 		})();
-
-		// Stops IT8951
 		if (this.config.mock === false && this.display !== undefined) {
 			this.IT8951_activate();
 			this.display.clear();
@@ -215,10 +141,6 @@ module.exports = NodeHelper.create({
 		}
 	},
 
-	/**
-	 * Returns counts on number of modules visibles, visibles with class "eink-4levels", visible with class no-eink-4levels.
-	 * @returns {"nbModules": integer, "nbModules4levels": integer, "nbModulesNo4levels": integer}
-	 */
 	getNbVisibleModules: async function () {
 		return await this.page.evaluate(() => {
 			return {
@@ -229,79 +151,50 @@ module.exports = NodeHelper.create({
 		});
 	},
 
-	/**
-	 * Does a screenshot of browser then a full refresh of the e-ink screen
-	 * @param {boolean} force16levels Force a refresh with 16 levels (useful to remove ghosting)
-	 */
 	fullRefresh: async function (force16levels = false) {
 		const self = this;
 		clearTimeout(this.refreshTimeout);
-		// Cancels partial refresh
 		this.stackAreas.length = 0;
-
-		Log.debug("IT8951: Full refresh started");
+		Log.log("Full refresh eink");
 		const imageDesc = await this.captureScreen();
-
 		const nbModules = await this.getNbVisibleModules();
 		const is4levels = !force16levels && ((this.config.defaultTo4levels && nbModules.nbModulesNo4levels == 0) || (!this.config.defaultTo4levels && nbModules.nbModules == nbModules.nbModules4levels));
 		this.IT8951_activate();
 		await this.IT8951_draw(imageDesc, is4levels);
 		this.IT8951_sleep();
-
-		Log.debug("IT8951: Full refresh completed");
-		// Schedules next update
 		this.refreshTimeout = setTimeout(function (self) {
 			self.fullRefresh(false);
 		}, this.config.updateInterval, self);
 	},
 
-	/**
-	 * Returns a screenshot of an area on page browser
-	 * @param {DOMRect} rect Area to screenshot or undefined for a full page screenshot
-	 * @returns {Image, DOMRect} PNG and area of the screenshot
-	 */
 	captureScreen: async function (rect) {
 		if (rect === undefined || rect === "") {
-			// Default target if no parameter: full page
 			rect = { x: 0, y: 0, width: this.display.width, height: this.display.height };
 		}
-		// Screenshot of the area in buffer
 		const image = await this.page.screenshot({ type: "png", clip: rect });
 		return { image: image, rect: rect };
 	},
 
-	/**
-	 * Displays provided area from imageDesc onto e-ink screen
-	 * @param {Image, DOMRect} imageDesc PNG and area of the screenshot
-	 * @param {boolean} is4levels Indicates if area can be displayed with only 4 levels of gray
-	 */
 	IT8951_draw: async function (imageDesc, is4levels) {
-		// Display buffer
 		if (!this.config.mock) {
-			// Convert png to raw
 			const data = await Sharp(imageDesc.image)
-				// grayscale on 1 channel
 				.gamma().greyscale().toColourspace("b-w")
-				// output the raw pixels
 				.raw()
-				// data is a Buffer containing uint8 values (0-255)
-				// with each byte representing one pixel
 				.toBuffer({ resolveWithObject: false });
 
 			if (is4levels !== true) {
-				// Check if buffer may not be with the 4 levels only
 				is4levels = this.isBufferOnlyGray4Levels(data);
 			}
-			// A fast non-flashy update mode that can go from any gray scale color to black or white
+			// Display update modes
+			const DISPLAY_UPDATE_MODE_DU4 = 7;   // Fast update, 4 gray levels, rare ghosting
+			const DISPLAY_UPDATE_MODE_GLD16 = 5; // For 6" displays
 
+			// force6inch: Use mode 5 (GLD16) for 6" Kindle screens, mode 7 (DU4) for others
 			const driverParam = this.config.driverParam || {};
-
 			const display_mode = driverParam.force6inch === true
-		    	? (is4levels ? 5 : false)
-    			: (is4levels ? DISPLAY_UPDATE_MODE_DU4 : false);
+				? (is4levels ? DISPLAY_UPDATE_MODE_GLD16 : false)
+				: (is4levels ? DISPLAY_UPDATE_MODE_DU4 : false);
 
-			Log.debug(`IT8951: Drawing with mode ${display_mode} (is4levels: ${is4levels})`);
-			// Draw area
 			this.display.draw(this.downscale8bitsTo4bits(data, is4levels),
 				imageDesc.rect.x, imageDesc.rect.y,
 				imageDesc.rect.width, imageDesc.rect.height,
@@ -309,30 +202,21 @@ module.exports = NodeHelper.create({
 		} else {
 			this.inc = (this.inc === undefined) ? 0 : (this.inc + 1) % 200;
 			await Sharp(imageDesc.image)
-				// Apply equivalent transformation as for e-paper
 				.gamma().greyscale().toColourspace("b-w")
-				// 16 colors (shades of gray)
 				.png({ colours: is4levels ? 4 : 16 })
-				// Save file
 				.toFile("/tmp/screenshot-" + this.inc + ".png");
 		}
 	},
 
-	/**
-	 * Wake up display
-	 */
 	IT8951_activate: function () {
 		if (!this.config.mock && this.IT8951_sysrun !== true) {
-			this.display.wait_for_ready();
+			this.display.wait_for_ready();  // Ensure previous operation (e.g., sleep) completed
 			this.display.activate();
-			this.display.wait_for_ready();
+			this.display.wait_for_ready();  // Wait for activation to complete
 		}
 		this.IT8951_sysrun = true;
 	},
 
-	/**
-	 * Sleep down display
-	 */
 	IT8951_sleep: function () {
 		if (!this.config.mock && this.IT8951_sysrun !== false) {
 			this.display.wait_for_display_ready();
@@ -341,40 +225,23 @@ module.exports = NodeHelper.create({
 		this.IT8951_sysrun = false;
 	},
 
-	/**
-	 * Converts a raw image from 8-bits/pixel to 4-bits/pixel keeping only the 4-high bits for each pixel
-	 * If is4levels is true => value of each pixel is set to nearest level between the 4 levels
-	 * @param {Buffer} buffer Buffer with raw image to process
-	 * @param {*} is4levels Indicates if area can be displayed with only 4 levels of gray
-	 * @returns {Buffer} Buffer with raw image with 4 bits for each pixel
-	 */
 	downscale8bitsTo4bits: function (buffer, is4levels) {
 		let buffer4b = Buffer.alloc(buffer.length / 2);
 		if (is4levels) {
 			for (let i = 0; i < buffer.length / 2; i++) {
-				// Iterates by 2 bytes. Get the 4-high bits of each byte
-				// see https://www.waveshare.net/w/upload/c/c4/E-paper-mode-declaration.pdf for values to set
-				// DU4: This mode supports transitions from any gray tone to gray tones 1, 6, 11, 16 (=> 0, 5, 10, 15)
 				buffer4b[i] = (parseInt((buffer[2 * i] >> 4) / 5) * 5)
 					| ((parseInt((buffer[(2 * i) + 1] >> 4) / 5) * 5) << 4);
 			}
 		} else {
 			for (let i = 0; i < buffer.length / 2; i++) {
-				// Iterate by 2 bytes. Get the 4-high bits of each byte
 				buffer4b[i] = (buffer[2 * i] >> 4) | (buffer[(2 * i) + 1] & 0xF0);
 			}
 		}
 		return buffer4b;
 	},
 
-	/**
-	 * Returns true if the buffer has only pixels within the 4 levels of gray
-	 * @param {Buffer} buffer Buffer with raw image to check
-	 * @returns {boolean} true the buffer has only pixels within the 4 levels of gray
-	 */
 	isBufferOnlyGray4Levels: function (buffer) {
 		for (let i = 0; i < buffer.length; i++) {
-			// Only checks the 4-high bits (the 4-low bits will be ignored when pixel will be converted to 16 gray-levels)
 			const val = buffer[i] >> 4;
 			if (val !== 0xF && val !== 0xA && val !== 0x6 && val !== 0) {
 				return false;
@@ -383,23 +250,13 @@ module.exports = NodeHelper.create({
 		return true;
 	},
 
-	/**
-	 * This method is called when a socket notification arrives.
-	 * @see `node_helper.socketNotificationReceived`
-	 * @see <https://docs.magicmirror.builders/development/node-helper.html#socketnotificationreceived-function-notification-payload>
-	 * @param {string} notification The identifier of the notification.
-	 * @param {*} payload The payload of the notification.
-	 */
 	socketNotificationReceived: function (notification, payload) {
 		if (!this.isInitialized && notification === "CONFIG") {
-			// Initializes driver - payload contains config module
 			this.config = payload;
 			this.initializeEink();
 		} else if (this.isInitialized && notification === "IT8951_ASK_FULL_REFRESH") {
-			// Full refresh of screen
 			const force16levels = (typeof payload !== 'boolean' || payload);
 			this.fullRefresh(force16levels);
 		}
 	},
-
 });
