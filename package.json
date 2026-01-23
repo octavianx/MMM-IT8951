@@ -18,8 +18,8 @@
 	],
 	"dependencies": {
 		"node-it8951": "github:octavianx/node-it8951-epaper",
-		"puppeteer": "^22.15.0",
-		"sharp": "^0.33.4"
+		"puppeteer": "^19.11.1",
+		"sharp": "^0.33.5"
 	},
 	"devDependencies": {
 		"@electron/rebuild": "^3.6.0",
