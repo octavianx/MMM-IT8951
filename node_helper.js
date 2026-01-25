@@ -172,6 +172,10 @@ module.exports = NodeHelper.create({
 		this.IT8951_activate();
 		await this.IT8951_draw(imageDesc, is4levels);
 		this.IT8951_sleep();
+		// Trigger GC if available (requires --expose-gc flag)
+		if (typeof global.gc === 'function') {
+			global.gc();
+		}
 		this.refreshTimeout = setTimeout(function (self) {
 			self.fullRefresh(false);
 		}, this.config.updateInterval, self);
@@ -192,6 +196,9 @@ module.exports = NodeHelper.create({
 				.raw()
 				.toBuffer({ resolveWithObject: false });
 
+			// Help GC by releasing the source image buffer
+			imageDesc.image = null;
+
 			if (is4levels !== true) {
 				is4levels = this.isBufferOnlyGray4Levels(data);
 			}
@@ -211,6 +218,8 @@ module.exports = NodeHelper.create({
 				.gamma().greyscale().toColourspace("b-w")
 				.png({ colours: is4levels ? 4 : 16 })
 				.toFile("/tmp/screenshot-" + this.inc + ".png");
+			// Help GC by releasing the source image buffer
+			imageDesc.image = null;
 		}
 	},
 
