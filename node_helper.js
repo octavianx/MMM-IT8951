@@ -13,6 +13,8 @@ const Log = require("logger");
 const Puppeteer = require("puppeteer");
 const IT8951 = require("node-it8951");
 const Sharp = require("sharp");
+const path = require("path");
+const fs = require("fs");
 
 // E-ink display update modes (IT8951)
 // See: https://www.waveshare.net/w/upload/c/c4/E-paper-mode-declaration.pdf
@@ -189,6 +191,30 @@ module.exports = NodeHelper.create({
 		return { image: image, rect: rect };
 	},
 
+	/**
+	 * Save current screen to a PNG file
+	 * @param {string} filename - Output filename (default: screenshot.png in module directory)
+	 * @returns {Promise<string>} - Path to the saved file
+	 */
+	saveScreenshot: async function (filename) {
+		if (!filename) {
+			filename = path.join(__dirname, "screenshot.png");
+		}
+
+		const imageDesc = await this.captureScreen();
+
+		// Process image same as IT8951_draw for consistency with e-ink display
+		const processedImage = await Sharp(imageDesc.image)
+			.gamma().greyscale().toColourspace("b-w")
+			.png({ colours: 16 })
+			.toBuffer();
+
+		fs.writeFileSync(filename, processedImage);
+		Log.log(`Screenshot saved to: ${filename}`);
+
+		return filename;
+	},
+
 	IT8951_draw: async function (imageDesc, is4levels) {
 		if (!this.config.mock) {
 			const data = await Sharp(imageDesc.image)
@@ -272,6 +298,17 @@ module.exports = NodeHelper.create({
 		} else if (this.isInitialized && notification === "IT8951_ASK_FULL_REFRESH") {
 			const force16levels = (typeof payload !== 'boolean' || payload);
 			this.fullRefresh(force16levels);
+		} else if (this.isInitialized && notification === "SAVE_SCREENSHOT") {
+			const filename = payload && payload.filename ? payload.filename : undefined;
+			(async () => {
+				try {
+					const savedPath = await this.saveScreenshot(filename);
+					this.sendSocketNotification("SCREENSHOT_SAVED", { path: savedPath, success: true });
+				} catch (err) {
+					Log.error(`Screenshot failed: ${err.message}`);
+					this.sendSocketNotification("SCREENSHOT_SAVED", { error: err.message, success: false });
+				}
+			})();
 		}
 	},
 });
