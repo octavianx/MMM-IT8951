@@ -33,6 +33,42 @@ module.exports = NodeHelper.create({
 	stackAreas: [],
 	IT8951_sysrun: undefined,
 
+	/**
+	 * Register Express routes for screenshot API
+	 */
+	setExpressApp: function (app) {
+		// Call parent method to set up static files from public directory
+		NodeHelper.prototype.setExpressApp.call(this, app);
+
+		const self = this;
+
+		// GET /MMM-IT8951/api/screenshot - Returns current screen as PNG
+		app.get(`/${this.name}/api/screenshot`, async (req, res) => {
+			if (!self.isInitialized || !self.page) {
+				return res.status(503).json({ error: "Display not initialized yet" });
+			}
+
+			try {
+				const imageDesc = await self.captureScreen();
+
+				// Process image same as e-ink display for consistency
+				const processedImage = await Sharp(imageDesc.image)
+					.gamma().greyscale().toColourspace("b-w")
+					.png({ colours: 16 })
+					.toBuffer();
+
+				res.set("Content-Type", "image/png");
+				res.set("Content-Disposition", "inline; filename=screenshot.png");
+				res.send(processedImage);
+			} catch (err) {
+				Log.error(`Screenshot API error: ${err.message}`);
+				res.status(500).json({ error: err.message });
+			}
+		});
+
+		Log.log(`${this.name}: Screenshot API registered at /${this.name}/api/screenshot`);
+	},
+
 	start: function () {
 		const isCurrentUserRoot = process.getuid() == 0;
 		Log.log(`Starting node helper for: ${this.name}`);
