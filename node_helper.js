@@ -32,6 +32,8 @@ module.exports = NodeHelper.create({
 	config: {},
 	stackAreas: [],
 	IT8951_sysrun: undefined,
+	refreshCount: 0,
+	RELOAD_EVERY_N_REFRESHES: 120, // ~1 hour at 30s interval
 
 	/**
 	 * Register Express routes for screenshot API
@@ -73,7 +75,7 @@ module.exports = NodeHelper.create({
 		const isCurrentUserRoot = process.getuid() == 0;
 		Log.log(`Starting node helper for: ${this.name}`);
 		(async () => {
-			let puppeteerArgs = ["--disable-gpu", "--single-process", "--disable-dev-shm-usage"];
+			let puppeteerArgs = ["--disable-gpu", "--single-process", "--disable-dev-shm-usage", "--js-flags=--max-old-space-size=128"];
 			if (isCurrentUserRoot) {
 				puppeteerArgs.push("--no-sandbox");
 			}
@@ -203,6 +205,16 @@ module.exports = NodeHelper.create({
 		const self = this;
 		clearTimeout(this.refreshTimeout);
 		this.stackAreas.length = 0;
+
+		// Periodically reload page to free Chromium renderer memory
+		this.refreshCount++;
+		if (this.refreshCount >= this.RELOAD_EVERY_N_REFRESHES) {
+			this.refreshCount = 0;
+			Log.log("Reloading page to free Chromium memory");
+			await this.page.reload({ waitUntil: "load" });
+			await this.page.waitForFunction(() => typeof MM !== 'undefined' && MM.getModules().length > 0, { timeout: 60000 });
+		}
+
 		Log.log("Full refresh eink");
 		const imageDesc = await this.captureScreen();
 		const nbModules = await this.getNbVisibleModules();
