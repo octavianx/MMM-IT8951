@@ -206,13 +206,14 @@ module.exports = NodeHelper.create({
 		clearTimeout(this.refreshTimeout);
 		this.stackAreas.length = 0;
 
-		// Periodically reload page to free Chromium renderer memory
+		// Periodically trigger Chromium GC to free accumulated memory
 		this.refreshCount++;
 		if (this.refreshCount >= this.RELOAD_EVERY_N_REFRESHES) {
 			this.refreshCount = 0;
-			Log.log("Reloading page to free Chromium memory");
-			await this.page.reload({ waitUntil: "load" });
-			await this.page.waitForFunction(() => typeof MM !== 'undefined' && MM.getModules().length > 0, { timeout: 60000 });
+			Log.log("Triggering Chromium GC to free memory");
+			const client = await this.page.target().createCDPSession();
+			await client.send("HeapProfiler.collectGarbage");
+			await client.detach();
 		}
 
 		Log.log("Full refresh eink");
